@@ -1,64 +1,105 @@
-import tensorflow as tf
-import numpy as np
-import cv2
-import sys
+# predict.py
 import os
+import cv2
+import numpy as np
+import tensorflow as tf
+from tensorflow.keras.models import load_model
 
-IMG_SIZE = (224, 224)
-MODEL_PATH = "handwriting_mobilenetv2_final.keras"
-CLASS_NAMES = ["beautiful", "medium", "ugly"]
+# ===============================
+# CONFIG
+# ===============================
+MODEL_PATH = "handwriting_efficientnet_final.keras"   
+IMG_SIZE = 224
+CLASSES = ["beautiful", "medium", "ugly"]       
 
-model = tf.keras.models.load_model(MODEL_PATH)
-print(" Model loaded successfully")
+# ===============================
+# PREPROCESS FUNCTION (same logic)
+# ===============================
+def preprocess_image_safe(img_path):
+    img = cv2.imread(img_path)
+    if img is None:
+        return None
 
-if len(sys.argv) != 2:
-    print("Usage: python predict.py path_to_image")
-    sys.exit()
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
 
-img_path = sys.argv[1]
+    # Minimal enhancement
+    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+    gray = clahe.apply(gray)
 
-if not os.path.exists(img_path):
-    print(" Image not found")
-    sys.exit()
+    # Invert only if writing is light
+    if np.mean(gray) > 127:
+        inverted = gray
+    else:
+        inverted = 255 - gray
 
-img = cv2.imread(img_path, cv2.IMREAD_UNCHANGED)
-if img is None:
-    print(" Cannot read image")
-    sys.exit()
+    # Resize keeping aspect ratio
+    h, w = inverted.shape
+    scale = IMG_SIZE / max(h, w)
+    new_w, new_h = int(w * scale), int(h * scale)
+    resized = cv2.resize(inverted, (new_w, new_h), interpolation=cv2.INTER_AREA)
 
-if len(img.shape) == 2:  # grayscale image
-    img = cv2.cvtColor(img, cv2.COLOR_GRAY2RGB)
-elif img.shape[2] == 4:  # RGBA
-    img = cv2.cvtColor(img, cv2.COLOR_BGRA2RGB)
-else:  # BGR
-    img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+    # Padding
+    top = (IMG_SIZE - new_h) // 2
+    bottom = IMG_SIZE - new_h - top
+    left = (IMG_SIZE - new_w) // 2
+    right = IMG_SIZE - new_w - left
+    padded = cv2.copyMakeBorder(
+        resized, top, bottom, left, right,
+        cv2.BORDER_CONSTANT, value=255
+    )
 
-img_lab = cv2.cvtColor(img, cv2.COLOR_RGB2LAB)
-l, a, b = cv2.split(img_lab)
-clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8))
-l = clahe.apply(l)
-img_lab = cv2.merge((l,a,b))
-img = cv2.cvtColor(img_lab, cv2.COLOR_LAB2RGB)
+    final = cv2.cvtColor(padded, cv2.COLOR_GRAY2BGR)
+    final = tf.keras.applications.efficientnet.preprocess_input(final)
+    return final
 
-gray = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
-_, mask = cv2.threshold(gray, 200, 255, cv2.THRESH_BINARY_INV)
-mask = cv2.cvtColor(mask, cv2.COLOR_GRAY2RGB)
-img = cv2.bitwise_and(img, mask)
 
-img = cv2.resize(img, IMG_SIZE)
-img = img.astype("float32") / 255.0
-img = np.expand_dims(img, axis=0)
+# ===============================
+# LOAD MODEL
+# ===============================
+print("📌 Loading model...")
+model = load_model(MODEL_PATH)
+print("✅ Model Loaded!")
 
-preds = model.predict(img)[0]
-pred_index = np.argmax(preds)
-pred_class = CLASS_NAMES[pred_index]
-confidence = preds[pred_index]
 
-print("\n🖊 Prediction Result")
-print("----------------------")
-print(f"Class      : {pred_class}")
-print(f"Confidence : {confidence:.2f}")
+# ===============================
+# PREDICT – Single Image
+# ===============================
+def predict_image(image_path):
+    img = preprocess_image_safe(image_path)
+    if img is None:
+        print("❌ Error loading:", image_path)
+        return
 
-print("\nFull probabilities:")
-for cls, p in zip(CLASS_NAMES, preds):
-    print(f"{cls:10s}: {p:.3f}")
+    img = np.expand_dims(img, axis=0)
+    pred = model.predict(img)[0]
+
+    idx = np.argmax(pred)
+    label = CLASSES[idx]
+    conf = round(pred[idx] * 100, 2)
+
+    print(f"\n🖼 Image: {image_path}")
+    print(f"🎯 Prediction: {label} ({conf}%)")
+    print("📊 Probabilities:")
+    for i, c in enumerate(CLASSES):
+        print(f"  {c}: {round(pred[i]*100,2)}%")
+
+
+# ===============================
+# PREDICT – A folder
+# ===============================
+def predict_folder(folder_path):
+    for file in os.listdir(folder_path):
+        if file.lower().endswith((".png", ".jpg", ".jpeg")):
+            predict_image(os.path.join(folder_path, file))
+
+
+# ===============================
+# RUN
+# ===============================
+if __name__ == "__main__":
+    # change this before running
+    TEST_PATH = "testu.jpg"      
+    if os.path.isdir(TEST_PATH):
+        predict_folder(TEST_PATH)
+    else:
+        predict_image(TEST_PATH)
