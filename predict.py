@@ -1,6 +1,7 @@
 # predict.py
 import os
 import cv2
+import json
 import numpy as np
 import tensorflow as tf
 from tensorflow.keras.models import load_model
@@ -10,7 +11,11 @@ from tensorflow.keras.models import load_model
 # ===============================
 MODEL_PATH = "handwriting_efficientnet_final.keras"   
 IMG_SIZE = 224
-CLASSES = ["beautiful", "medium", "ugly"]       
+# LOAD CLASSES
+with open("classes.json", "r") as f:
+    class_indices = json.load(f)
+
+CLASSES = {v: k for k, v in class_indices.items()}      
 
 # ===============================
 # PREPROCESS FUNCTION (same logic)
@@ -80,8 +85,9 @@ def predict_image(image_path):
     print(f"\n🖼 Image: {image_path}")
     print(f"🎯 Prediction: {label} ({conf}%)")
     print("📊 Probabilities:")
-    for i, c in enumerate(CLASSES):
-        print(f"  {c}: {round(pred[i]*100,2)}%")
+    for i in range(len(CLASSES)):
+        print(f"  {CLASSES[i]}: {round(pred[i]*100,2)}%")
+
 
 
 # ===============================

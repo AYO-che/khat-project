@@ -61,7 +61,15 @@ val_data = val_datagen.flow_from_directory(
 )
 
 class_names = list(train_data.class_indices.keys())
-print("Classes:", class_names)
+import json
+
+print("CLASS INDICES:", train_data.class_indices)
+
+with open("classes.json", "w") as f:
+    json.dump(train_data.class_indices, f)
+
+print("✅ classes.json saved")
+
 
 # -----------------------------
 # Class weights
