@@ -1,3 +1,18 @@
+# Virtual env
 venv/
+
+# Datasets
+DATASET/
+dataset_split/
+fresh_preprocessed_aug_safe/
+
+# Uploaded files
+uploads/
+
+# ML models
+*.keras
+*.h5
+
+# Python cache
 __pycache__/
 *.pyc
